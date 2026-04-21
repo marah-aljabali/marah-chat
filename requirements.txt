@@ -7,13 +7,12 @@ pypdf # for PDF processing
 chromadb # for ChromaDB vector store
 langchain==0.3.0
 langchain-core==0.3.0 # core components of LangChain
-langchain-community
+langchain-community==0.3.0
 langchain-chroma
 langchain-google-genai==2.0.0
 langchain-huggingface==0.1.0 # for HuggingFace integration
 tavily-python # for Tavily API
 langdetect # for language detection
-langchain-chroma
 requests==2.32.3
 
 
