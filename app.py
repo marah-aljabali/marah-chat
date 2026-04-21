@@ -338,7 +338,6 @@ if question:
                 {dots},
                 unsafe_allow_html=True
             )
-        thinking_placeholder.empty()
         
         # إعداد السياق
         contextual_query = f"السؤال الحالي: {question}\nالسياق: {format_history(st.session_state.chat_history)}"
