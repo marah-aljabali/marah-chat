@@ -328,7 +328,6 @@ if question:
 
     # إنشاء مكان للرسالة
     with st.chat_message("assistant"):
-    message_placeholder = st.empty()
     thinking_placeholder = st.empty()
     full_response = ""
 
