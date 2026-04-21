@@ -331,15 +331,35 @@ if question:
         message_placeholder = st.empty()
         full_response = ""
         
-        # animation 3 dots
-        for i in range(3):
-            dots = "." * (i % 3 + 1)
-            message_placeholder.markdown(
-                dots,
-                unsafe_allow_html=True
-            )
-            time.sleep(0.4)
-            
+        thinking_placeholder = st.empty()
+######
+        start_time = time.time()
+        
+        # خليها تشتغل مثلاً 1.5 ثانية
+        while time.time() - start_time < 1.5:
+            for i in range(3):
+                dots = "." * (i + 1)
+        
+                thinking_placeholder.markdown(
+                    f"""
+                    <div style="
+                        background: #ffffff;
+                        padding: 14px 22px;
+                        border-radius: 16px 16px 16px 0;
+                        box-shadow: 0 4px 24px rgba(15,31,61,.10);
+                        color: #0d9488;
+                        font-style: italic;
+                    ">
+                    Thinking{dots}
+                    </div>
+                    """,
+                    unsafe_allow_html=True
+                )
+        
+                time.sleep(0.3)
+        
+        thinking_placeholder.empty()
+            #############
         # إعداد السياق
         contextual_query = f"السؤال الحالي: {question}\nالسياق: {format_history(st.session_state.chat_history)}"
         db_docs = retriever.invoke(contextual_query)
