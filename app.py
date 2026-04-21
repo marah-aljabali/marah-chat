@@ -291,10 +291,8 @@ with st.sidebar:
     st.markdown("---")
     st.markdown("### 🔄 Database")
     
-    db_status = "Ready" if os.path.exists(DB_DIR) else "Missing"
-    st.metric("Status", db_status)
-    
-    st.caption("🤖 Auto-updates daily via GitHub Actions.")
+    db_status = "Ready" if os.path.exists('university_db_app') else "Missing"
+    st.metric("Status", db_status
 
     # الفوتر
     st.markdown("---")
@@ -332,6 +330,26 @@ if question:
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
         full_response = ""
+        
+        # 🧠 thinking UI
+        thinking_placeholder = st.empty()
+        thinking_placeholder.markdown(
+            """
+            <div style="
+                background: #ffffff;
+                padding: 14px 22px;
+                border-radius: 16px 16px 16px 0;
+                box-shadow: 0 4px 24px rgba(15,31,61,.10);
+                color: #0d9488;
+                font-style: italic;
+            ">
+            🧠 Thinking...
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+        time.sleep(1.2)
+        thinking_placeholder.empty()
         
         # إعداد السياق
         contextual_query = f"السؤال الحالي: {question}\nالسياق: {format_history(st.session_state.chat_history)}"
