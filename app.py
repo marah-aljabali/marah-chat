@@ -292,7 +292,7 @@ with st.sidebar:
     st.markdown("### 🔄 Database")
     
     db_status = "Ready" if os.path.exists('university_db_app') else "Missing"
-    st.metric("Status", db_status
+    st.metric("Status", db_status)
 
     # الفوتر
     st.markdown("---")
