@@ -13,10 +13,10 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.chat_history import InMemoryChatMessageHistory
 from tavily import TavilyClient
 import requests
-import zipfile
+
 
 load_dotenv()
-DB_DIR = "university_db_app"
+
 st.set_page_config(
     page_title="Marah – University Assistant",
     page_icon="🎓",
@@ -230,24 +230,9 @@ load_overlay.markdown("""
 
 @st.cache_resource
 def load_components():
-    # نضع مهلة زمنية لتفادي التعلق للأبد
-    timeout_seconds = 60
-    start_time = time.time()
-    
-    print(f"👀 Waiting for Database folder at {DB_DIR}...")
-
-    # حلقة الانتظار (مع توقف بعد دقيقة إذا فشل التحميل)
-    while not os.path.exists(DB_DIR) or not os.listdir(DB_DIR):
-        if time.time() - start_time > timeout_seconds:
-            raise Exception(f"⏳ Timeout! Database folder '{DB_DIR}' not found after {timeout_seconds} seconds.")
-        time.sleep(1)
-    
-    print("✅ Database folder found! Loading models...")
-    
     embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
-    db = Chroma(persist_directory=DB_DIR, embedding_function=embeddings)
+    db = Chroma(persist_directory="university_db_app", embedding_function=embeddings)
     retriever = db.as_retriever(search_kwargs={"k": 5})
-    
     llm = ChatGoogleGenerativeAI(
         model="gemini-2.5-flash", 
         temperature=0, 
