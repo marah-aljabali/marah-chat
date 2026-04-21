@@ -328,38 +328,39 @@ if question:
 
     # إنشاء مكان للرسالة
     with st.chat_message("assistant"):
-        message_placeholder = st.empty()
-        full_response = ""
+    message_placeholder = st.empty()
+    thinking_placeholder = st.empty()
+    full_response = ""
+
+    thinking = True
+    # 🧠 animation function
+    def animate_thinking():
+        i = 0
+        while thinking:
+            dots = "." * (i % 3 + 1)
+            thinking_placeholder.markdown(
+                f"""
+                <div style="
+                    background: #ffffff;
+                    padding: 14px 22px;
+                    border-radius: 16px 16px 16px 0;
+                    box-shadow: 0 4px 24px rgba(15,31,61,.10);
+                    color: #0d9488;
+                    font-style: italic;
+                ">
+                Thinking{dots}
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+            time.sleep(0.3)
+            i += 1
+
+        # تشغيل التفكير في background
+        import threading
+        t = threading.Thread(target=animate_thinking)
+        t.start()
         
-        thinking_placeholder = st.empty()
-######
-        start_time = time.time()
-        
-        # خليها تشتغل مثلاً 1.5 ثانية
-        while time.time() - start_time < 1.5:
-            for i in range(3):
-                dots = "." * (i + 1)
-        
-                thinking_placeholder.markdown(
-                    f"""
-                    <div style="
-                        background: #ffffff;
-                        padding: 14px 22px;
-                        border-radius: 16px 16px 16px 0;
-                        box-shadow: 0 4px 24px rgba(15,31,61,.10);
-                        color: #0d9488;
-                        font-style: italic;
-                    ">
-                    Thinking{dots}
-                    </div>
-                    """,
-                    unsafe_allow_html=True
-                )
-        
-                time.sleep(0.3)
-        
-        thinking_placeholder.empty()
-            #############
         # إعداد السياق
         contextual_query = f"السؤال الحالي: {question}\nالسياق: {format_history(st.session_state.chat_history)}"
         db_docs = retriever.invoke(contextual_query)
@@ -407,11 +408,24 @@ if question:
 
         try:
             # حلقة الستريمنج الحقيقية
-            for chunk in chain.stream({"context": final_context, "question": question, "history": history_text}):
-                full_response += chunk
-                # تحديث الرسالة مع مؤشر الكتابة
-                message_placeholder.markdown(full_response + '<span class="typing-cursor"></span>', unsafe_allow_html=True)
+            first_chunk = True
+            for chunk in chain.stream({
+                "context": final_context,
+                "question": question,
+                "history": history_text
+            }):
+                if first_chunk:
+                    thinking = False
+                    t.join()
+                    thinking_placeholder.empty()
+                    first_chunk = False
             
+                full_response += chunk
+                message_placeholder.markdown(
+                    full_response + '<span class="typing-cursor"></span>',
+                    unsafe_allow_html=True
+                )holder.markdown(full_response + '<span class="typing-cursor"></span>', unsafe_allow_html=True)
+            ##########
             # إزالة المؤشر وحفظ النهائي
             message_placeholder.markdown(full_response)
             st.session_state.chat_history.add_ai_message(full_response)
