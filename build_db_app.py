@@ -9,6 +9,7 @@ from langchain_community.vectorstores import Chroma
 import hashlib
 import datetime
 import shutil
+import re
 
 # ========= إعدادات =========
 load_dotenv()
@@ -19,38 +20,50 @@ SITEMAP_URL = "https://www.iugaza.edu.ps/wp-sitemap.xml"
 UNIVERSITY_BASE_URL = "https://www.iugaza.edu.ps"
 EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
-# ========= جلب روابط السايت ماب =========
+# ========= دالة لتنظيف النص من القوائم والتذييلات =========
+def clean_text(text):
+    # إزالة الأسطر الفارغة المتكررة والمسافات الزائدة
+    text = re.sub(r'\s+', ' ', text).strip()
+    # إزالة النصوص الشائعة غير المرغوبة (قوائم وتذييلات)
+    noise_phrases = [
+        "الرئيسية", "اتصل بنا", "خريطة الموقع", "الرؤية", "الرسالة", 
+        "Copyright", "All Rights Reserved", "Facebook", "Twitter", "Instagram",
+        "القائمة", "بحث", "تسجيل الدخول", "English"
+    ]
+    # إذا كان السطر يحتوي على جملة قصيرة من العبارات أعلاه، قد نحتاج لتصفيتها بذكاء
+    # هنا سنكتفي بإزالة التكرار المفرط للمسافات والأسطر
+    return text
+
+# ========= جلب وتصفية الروابط =========
 def get_website_urls_from_sitemap(sitemap_url):
     print("🗺️ جاري جلب خريطة الموقع...")
     try:
-        # نستخدم هنا أيضاً User-Agent في حال حظر السايت ماب نفسه
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        }
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
         response = requests.get(sitemap_url, headers=headers)
         response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'xml')
         urls = [loc.text for loc in soup.find_all('loc')]
         
-        # فلترة الروابط
-        valid_urls = [url for url in urls if url.startswith(UNIVERSITY_BASE_URL)]
+        # 🛑 فلترة الروابط لاستبعاد الأخبار والأرشيف القديم
+        exclude_keywords = ["/news/", "/events/", "/category/", "/tag/", "/author/", "/page/", "/2020/", "/2021/", "/2022/"]
+        filtered_urls = []
+        for url in urls:
+            if url.startswith(UNIVERSITY_BASE_URL) and not any(k in url for k in exclude_keywords):
+                filtered_urls.append(url)
         
-        print(f"✅ تم العثور على {len(valid_urls)} رابط صالح.")
-        return valid_urls
+        print(f"✅ تم العثور على {len(filtered_urls)} رابط صالح بعد الاستبعاد.")
+        return filtered_urls
     except Exception as e:
         print(f"❌ خطأ في جلب خريطة الموقع: {e}")
-        print("🔄 استخدام قائمة روابط احتياطية...")
+        # قائمة احتياطية لأهم الصفحات فقط
         return [
-            f"{UNIVERSITY_BASE_URL}/",
             f"{UNIVERSITY_BASE_URL}/aboutiug/",
             f"{UNIVERSITY_BASE_URL}/facalties/",
             f"{UNIVERSITY_BASE_URL}/division/",
             f"{UNIVERSITY_BASE_URL}/e3lan/",
             f"{UNIVERSITY_BASE_URL}/eservices/",
             f"{UNIVERSITY_BASE_URL}/newstd/",
-            f"{UNIVERSITY_BASE_URL}/eservices/",
-            f"{UNIVERSITY_BASE_URL}/أخبار-الجامعة/"
         ]
 
 # ========= بناء قاعدة البيانات =========
@@ -59,59 +72,59 @@ def build_database():
 
     all_documents = []
 
-    # ===== 🌐 تحميل الموقع (المهم جداً) =====
+    # ===== 🌐 تحميل الموقع =====
     urls = get_website_urls_from_sitemap(SITEMAP_URL)
     
-    # تحديد عدد الروابط لتجنب التوقيت الطويل جداً في الووركفلو
-    # يمكنك زيادة الرقم لاحقاً، لكن 100-200 رابط جيد للتجربة
+    # تحديد عدد الروابط: نأخذ أول 50 رابط بعد الفلترة لضمان الجودة على الكمية
     urls = urls[:100] 
 
     if urls:
         print(f"📥 جاري تحميل المحتوى من {len(urls)} صفحة ويب...")
         
-        # ⚠️ هذا هو الحل لمشكلة الـ 403: تعريف هوية المتصفح (User-Agent)
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5"
         }
 
         try:
+            # نستخدم bs_kwargs لمحاولة جلب المحتوى الرئيسي فقط (مثل <main> أو <article>)
+            # لكن إذا فشل، سيعود لتحميل الصفحة كاملة، لذا سنقوم بالتنظيف لاحقاً
             web_loader = WebBaseLoader(
                 urls,
                 continue_on_failure=True, 
-                requests_per_second=1,
-                requests_kwargs={"headers": headers}, # تمرير الهيدرز هنا
-                bs_kwargs={"parse_only": SoupStrainer("body")}
+                requests_per_second=1, # تخفيف الحمل على السيرفر
+                requests_kwargs={"headers": headers}, 
+                bs_kwargs={"parse_only": SoupStrainer(["main", "article", "div", "body"])} 
             )
             web_documents = web_loader.load()
-            print(f"✅ تم تحميل {len(web_documents)} وثيقة من الموقع الإلكتروني.")
             
-            # إضافة مصدر للموقع للتمييز
+            # تنظيف النصوص المستخرجة
             for doc in web_documents:
+                doc.page_content = clean_text(doc.page_content)
                 doc.metadata["source"] = "website"
                 
             all_documents.extend(web_documents)
+            print(f"✅ تم تحميل وتنظيف {len(web_documents)} وثيقة من الموقع.")
         except Exception as e:
             print(f"❌ خطأ أثناء تحميل الموقع: {e}")
 
     # ===== 📄 تحميل PDF =====
-    # التأكد من المسار المطلق مرة أخرى لضمان عمله في الووركفلو
     current_dir = os.path.dirname(os.path.abspath(__file__))
     absolute_data_path = os.path.join(current_dir, DATA_PATH)
 
     if os.path.exists(absolute_data_path):
         print("📥 جاري تحميل ملفات PDF...")
         try:
-            # استخدام silent_errors لتجنب توقف العملية بسبب ملف واحد تالف
             pdf_loader = DirectoryLoader(absolute_data_path, loader_cls=PyPDFLoader, silent_errors=True)
             pdf_docs = pdf_loader.load()
 
             for doc in pdf_docs:
                 doc.metadata["source"] = "pdf"
+                # تنظيف الـ PDF أيضاً
+                doc.page_content = clean_text(doc.page_content)
 
-            print(f"✅ تم تحميل {len(pdf_docs)} صفحة من ملفات PDF")
             all_documents.extend(pdf_docs)
+            print(f"✅ تم تحميل {len(pdf_docs)} صفحة من ملفات PDF")
         except Exception as e:
             print(f"❌ خطأ أثناء قراءة ملفات PDF: {e}")
 
@@ -119,11 +132,11 @@ def build_database():
         print("❌ لا توجد مستندات لمعالجتها!")
         return
 
-    # ===== ✂️ تقسيم =====
+    # ===== ✂️ تقسيم (زيادة الحجم لتحسين السياق) =====
     print("✂️ تقسيم النصوص...")
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100
+        chunk_size=1000,  # زيادة الحجم من 500 إلى 1000 للحصول على سياق أفضل
+        chunk_overlap=200
     )
     chunks = splitter.split_documents(all_documents)
     print(f"✅ عدد الأجزاء النهائية: {len(chunks)}")
@@ -138,9 +151,6 @@ def build_database():
     if os.path.exists(DB_PATH):
         shutil.rmtree(DB_PATH)
 
-    for chunk in chunks:
-        chunk.metadata["hash"] = get_hash(chunk.page_content)
-
     try:
         Chroma.from_documents(
             documents=chunks,
@@ -151,13 +161,9 @@ def build_database():
         with open("last_update.txt", "w", encoding="utf-8") as f:
             f.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
             
-        print("🎉 تم تحديث قاعدة البيانات من الموقع وملفات PDF بنجاح!")
+        print("🎉 تم تحديث قاعدة البيانات بنجاح!")
     except Exception as e:
         print(f"❌ خطأ أثناء حفظ قاعدة البيانات: {e}")
 
-def get_hash(text):
-    return hashlib.md5(text.encode()).hexdigest()
-
 if __name__ == "__main__":
     build_database()
-
