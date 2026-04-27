@@ -125,9 +125,12 @@ def build_database():
     #all_documents.extend(web_docs)
 
     # ===== 📄 تحميل PDF =====
-    if os.path.exists(DATA_PATH):
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    absolute_data_path = os.path.join(current_dir, DATA_PATH)
+    
+    if os.path.exists(absolute_data_path):
         print("📥 تحميل ملفات PDF...")
-        pdf_loader = DirectoryLoader(DATA_PATH, loader_cls=PyPDFLoader)
+        pdf_loader = DirectoryLoader(absolute_data_path, loader_cls=PyPDFLoader, silent_errors=True)
         pdf_docs = pdf_loader.load()
 
         for doc in pdf_docs:
