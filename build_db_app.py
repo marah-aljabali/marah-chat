@@ -28,7 +28,9 @@ def get_all_urls_from_sitemap(sitemap_url):
 
     def parse_sitemap(url):
         try:
-            response = requests.get(url, timeout=10)
+            # تم إضافة Headers هنا أيضاً
+            headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+            response = requests.get(url, headers=headers, timeout=10) # <--- تعديل مهم
             soup = BeautifulSoup(response.content, "xml")
 
             # لو فيه sitemaps فرعية
@@ -65,8 +67,11 @@ def get_website_urls_from_sitemap(sitemap_url):
     """
     print("🗺️ جاري جلب خريطة الموقع...")
     try:
-        response = requests.get(sitemap_url)
-        response.raise_for_status() # التأكد من أن الطلب ناجح
+        # ✅ إضافة User-Agent لحل مشكلة 403
+        headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"}
+        
+        response = requests.get(sitemap_url, headers=headers, timeout=10) # <--- تعديل مهم
+        response.raise_for_status()
         
         soup = BeautifulSoup(response.content, 'xml')
         urls = [loc.text for loc in soup.find_all('loc')]
@@ -105,28 +110,7 @@ def build_database():
 
     # ===== 🌐 تحميل الموقع =====
     urls = get_website_urls_from_sitemap(SITEMAP_URL)
-    #  urls = filter_urls(urls)
-
-    # 🔥 تقليل الحجم (اختياري)
-    #if len(urls) > 300:
-     #   urls = random.sample(urls, 300)
-      #3  print("⚡ تم اختيار 300 رابط عشوائي لتسريع البناء")
-
-    #print("📥 تحميل صفحات الموقع...")
-
-    #web_loader = WebBaseLoader(
-     #   urls,
-      #  requests_per_second=2,
-       # continue_on_failure=True,
-        #bs_kwargs={
-         #   "parse_only": SoupStrainer(["p", "h1", "h2", "h3", "li"])
-        #}
-    #)
-
-    #web_docs = web_loader.load()
-
-    #for doc in web_docs:
-     #   doc.metadata["source"] = "website" 
+    
     if urls:
       print("📥 جاري تحميل المحتوى من صفحات الويب...")
       # WebBaseLoader يمكنه التعامل مع قائمة من الروابط
@@ -141,13 +125,12 @@ def build_database():
       print(f"✅ تم تحميل {len(web_documents)} وثيقة من الموقع الإلكتروني.")
       all_documents.extend(web_documents)
 
-    #print(f"✅ تم تحميل {len(web_docs)} صفحة من الموقع")
-    #all_documents.extend(web_docs)
-
     # ===== 📄 تحميل PDF =====
     if os.path.exists(DATA_PATH):
         print("📥 تحميل ملفات PDF...")
-        pdf_loader = DirectoryLoader(DATA_PATH, loader_cls=PyPDFLoader)
+        
+        # ✅ إضافة silent_errors=True لحل مشكلة الملفات التالفة (مثل ملف n)
+        pdf_loader = DirectoryLoader(DATA_PATH, loader_cls=PyPDFLoader, silent_errors=True)
         pdf_docs = pdf_loader.load()
 
         for doc in pdf_docs:
@@ -199,6 +182,3 @@ def build_database():
 # ========= تشغيل =========
 if __name__ == "__main__":
     build_database()
-
-
-
