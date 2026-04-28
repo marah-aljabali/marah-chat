@@ -19,7 +19,7 @@ def load_components():
     embeddings = HuggingFaceEmbeddings(model_name="paraphrase-multilingual-MiniLM-L12-v2")
     db = Chroma(persist_directory="university_db_app", embedding_function=embeddings)
     retriever = db.as_retriever(search_kwargs={"k": 4})
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash-exp", temperature=0.1, streaming=True)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.1, streaming=True)
     return retriever, llm
 
 def format_docs(docs):
