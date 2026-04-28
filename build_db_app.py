@@ -14,7 +14,7 @@ import time
 load_dotenv()
 # مسارات الملفات
 DATA_PATH = "data/pdfs"
-CHROMA_DB_PATH = "university_db"
+CHROMA_DB_PATH = "university_db_app"
 # إعدادات النماذج
 EMBEDDING_MODEL_NAME = "paraphrase-multilingual-MiniLM-L12-v2"
 # إعدادات الموقع
