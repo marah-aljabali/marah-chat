@@ -67,7 +67,7 @@ def get_website_urls_from_sitemap(sitemap_url):
             f"{UNIVERSITY_BASE_URL}/eservices/",
             f"{UNIVERSITY_BASE_URL}/newstd/",
             f"{UNIVERSITY_BASE_URL}/eservices/",
-            f"{UNIVERSITY_BASE_URL}/أخبار-الجامعة/"عمادة شؤون الطلاب
+            f"{UNIVERSITY_BASE_URL}/أخبار-الجامعة",
         ]
 
 # ========= بناء قاعدة البيانات =========
