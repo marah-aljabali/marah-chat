@@ -18,38 +18,24 @@ DATA_PATH = "data/pdfs"
 DB_PATH = "university_db_app"
 SITEMAP_URL = "https://www.iugaza.edu.ps/wp-sitemap.xml"
 UNIVERSITY_BASE_URL = "https://www.iugaza.edu.ps"
-# نموذج يدعم العربية والإنجليزية بشكل جيد وسرعة مقبولة
 EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2" 
 
-# ========= دالة تنظيف الويب (HTML Cleaning) =========
+# ========= دالة تنظيف الويب (مرنة أكثر) =========
 def clean_html_text(text):
     """
-    دالة لإزالة الضوضاء من نصوص الويب (قوائم، فوترات، كلمات غير مفيدة)
-    لضمان أن قاعدة البيانات تحتوي على معلومات دراسية فقط.
+    تنظيف خفيف جداً لضمان عدم حذف المعلومات المهمة.
     """
     if not text:
         return ""
     
-    # قائمة كلمات وجمل شائعة في المواقع الإلكترونية نريد التخلص منها
-    noise_patterns = [
-        r"من نحن", r"اتصل بنا", r"الرئيسية", r"إعلان", r"تسجيل الدخول", r"بحث", 
-        r"القائمة الرئيسية", r"Toggle navigation", r"القائمة", r"Scroll to top", 
-        r"جميع الحقوق محفوظة", r"حقوق النشر", r"Facebook", r"Twitter", r"Instagram",
-        r"بريد الالكتروني", r"رابط", r"انقر هنا", r"للمزيد", r"تابعنا على", r"English", r"العربية"
-    ]
-    
-    # إزالة الأنماط
-    for pattern in noise_patterns:
-        text = re.sub(pattern, "", text, flags=re.IGNORECASE)
-    
-    # إزالة الأسطر الفارغة المتكررة
+    # إزالة الأسطر الفارغة المتكررة فقط للحفاظ على المعلومات
     text = re.sub(r'\n+', '\n', text)
-    # إزالة المسافات الزائدة
     text = re.sub(r'[ \t]+', ' ', text)
     
+    # سنعتمد على Splitter لاحقاً لتنظيف الباقي، هنا فقط ننظّم النص
     return text.strip()
 
-# ========= جلب الروابط =========
+# ========= جلب الروابط (مع قائمة احتياطية أغنى) =========
 def get_website_urls_from_sitemap(sitemap_url):
     print("🗺️ Fetching Sitemap...")
     try:
@@ -64,19 +50,24 @@ def get_website_urls_from_sitemap(sitemap_url):
         
         valid_urls = [url for url in urls if url.startswith(UNIVERSITY_BASE_URL)]
         
-        # 🔍 فلترة: نستثني صفحات الوسائط الكبيرة والملفات لتركز على المحتوى
+        # فلترة الروابط لتجنب الميديا
         valid_urls = [url for url in valid_urls if not any(x in url.lower() for x in ['.jpg', '.png', '.pdf', 'video', 'attachment'])]
         
-        print(f"✅ Found {len(valid_urls)} valid URLs.")
+        print(f"✅ Found {len(valid_urls)} valid URLs from Sitemap.")
         return valid_urls
     except Exception as e:
         print(f"❌ Sitemap Error: {e}")
-        # قائمة احتياطية صغيرة في حال فشل السايت ماب
+        # قائمة احتياطية أغنى بروابط ذات محتوى نصي مرجح
         return [
             f"{UNIVERSITY_BASE_URL}/",
             f"{UNIVERSITY_BASE_URL}/aboutiug/",
             f"{UNIVERSITY_BASE_URL}/facalties/",
-            f"{UNIVERSITY_BASE_URL}/division/"
+            f"{UNIVERSITY_BASE_URL}/division/",
+            f"{UNIVERSITY_BASE_URL}/e3lan/",
+            f"{UNIVERSITY_BASE_URL}/eservices/",
+            f"{UNIVERSITY_BASE_URL}/newstd/",
+            f"{UNIVERSITY_BASE_URL}/eservices/",
+            f"{UNIVERSITY_BASE_URL}/أخبار-الجامعة/"عمادة شؤون الطلاب
         ]
 
 # ========= بناء قاعدة البيانات =========
@@ -88,42 +79,50 @@ def build_database():
     # ===== 🌐 تحميل الموقع =====
     urls = get_website_urls_from_sitemap(SITEMAP_URL)
     
-    # ⚠️ في بيئة GitHub Actions، حاول ألا تحمل آلاف الصفحات لتتجاوز Timeout
-    # 150 رابط عادة يكفي لتغطية الدوريات والمعلومات الأساسية
-    # يمكنك زيادة الرقم إذا كانت الـ Action وقتها كافياً
-    urls = urls[:150] 
+    # سنأخذ الروابط كما هي لنجرب جميعها
+    print(f"📥 Loading content from {len(urls)} web pages...")
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
+    }
 
     if urls:
-        print(f"📥 Loading content from {len(urls)} web pages...")
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
-        }
-
         try:
-            # استخدام continue_on_failure لعدم توقف العملية بفشل صفحة واحدة
             web_loader = WebBaseLoader(
                 urls,
                 continue_on_failure=True, 
-                requests_per_second=1, # نحترم الموقع حتى لا يتم حظرنا
+                requests_per_second=1,
                 requests_kwargs={"headers": headers},
                 bs_kwargs={"parse_only": SoupStrainer("body")}
             )
             web_documents = web_loader.load()
             
-            # ✨ عملية التنظيف الجوهرية
+            print(f"⚠️ Raw documents fetched: {len(web_documents)}")
+            
+            # ✨ عملية التنظيف والتشخيص
             cleaned_web_docs = []
-            for doc in web_documents:
-                # تنفيذ دالة التنظيف
-                cleaned_text = clean_html_text(doc.page_content)
-                # نتجاهل النصوص القصيرة جداً (عناوين القوائم مثلاً)
-                if len(cleaned_text) > 100: 
+            for i, doc in enumerate(web_documents):
+                raw_text = doc.page_content
+                cleaned_text = clean_html_text(raw_text)
+                
+                raw_len = len(raw_text)
+                clean_len = len(cleaned_text)
+                url = doc.metadata.get('source', 'unknown')
+
+                # 🔥 طباعة التشخيص (هام جداً لمعرفة ما يحدث)
+                print(f"🔍 [DEBUG {i+1}] URL: {url} | Raw: {raw_len} chars -> Cleaned: {clean_len} chars")
+                
+                # خفضنا الحد الأدنى من 100 إلى 50 للتأكد من عدم ضياع الصفحات القصيرة
+                if clean_len > 50: 
                     doc.page_content = cleaned_text
                     doc.metadata["source"] = "website"
                     cleaned_web_docs.append(doc)
+                else:
+                    # طباعة عينة من النص إذا تم حذفه
+                    print(f"⚠️ Dropped (Short). Content: {cleaned_text[:100]}")
             
-            print(f"✅ Loaded & Cleaned {len(cleaned_web_docs)} web documents.")
+            print(f"✅ Final Cleaned Web Documents: {len(cleaned_web_docs)}")
             all_documents.extend(cleaned_web_docs)
         except Exception as e:
             print(f"❌ Web Loading Error: {e}")
@@ -137,10 +136,6 @@ def build_database():
         try:
             pdf_loader = DirectoryLoader(absolute_data_path, loader_cls=PyPDFLoader, silent_errors=True)
             pdf_docs = pdf_loader.load()
-
-            for doc in pdf_docs:
-                doc.metadata["source"] = "pdf"
-
             print(f"✅ Loaded {len(pdf_docs)} pages from PDF files.")
             all_documents.extend(pdf_docs)
         except Exception as e:
@@ -152,24 +147,19 @@ def build_database():
         print("❌ No documents to process!")
         return
 
-    # ===== ✂️ تقسيم النصوص (Chunking) =====
+    # ===== ✂️ تقسيم النصوص =====
     print("✂️ Splitting text into chunks...")
-    
-    # تعديل الاعدادات لزيادة الدقة:
-    # chunk_size=1000: لاستيعاب معلومة كاملة
-    # chunk_overlap=200: لضمان عدم فقدان السياق بين الجمل
     splitter = RecursiveCharacterTextSplitter(
         chunk_size=1000,
         chunk_overlap=200,
         length_function=len,
-        separators=["\n\n", "\n", " ", ". ", "،", ""] # فواصل مناسبة للعربية
+        separators=["\n\n", "\n", " ", ". ", "，", ""]
     )
     chunks = splitter.split_documents(all_documents)
     print(f"✅ Final chunks count: {len(chunks)}")
 
     # ===== 🧠 Embeddings & Save =====
     print(f"🧠 Loading Embedding Model: {EMBEDDING_MODEL}...")
-    # نستخدم device='cpu' للتأكد من عدم حدوث مشاكل في GitHub Actions إذا لم يتوفر CUDA
     embeddings = HuggingFaceEmbeddings(model_name=EMBEDDING_MODEL)
 
     print("💾 Building Vector Database...")
@@ -185,7 +175,6 @@ def build_database():
             persist_directory=DB_PATH
         )
         
-        # كتابة ملف للتأريخ
         update_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         with open("last_update.txt", "w", encoding="utf-8") as f:
             f.write(update_time)
