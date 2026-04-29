@@ -12,4 +12,4 @@ langchain-huggingface==0.1.0 # for HuggingFace integration
 langdetect # for language detection
 langchain-chroma
 requests==2.32.3
-
+langchain_community
