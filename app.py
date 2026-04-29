@@ -14,10 +14,6 @@ from langchain_core.chat_history import InMemoryChatMessageHistory
 
 load_dotenv()
 # استدعاء دالة البناء
-try:
-    from build_db_app import build_database
-except ImportError:
-    build_database = None
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 🚀 UPDATE LOGIC (يجب أن يكون في البداية قبل تحميل أي شيء)
@@ -420,72 +416,6 @@ st.markdown("""
 # SIDEBAR & BUTTON LOGIC (فقط وضع الإشارة)
 # ─────────────────────────────────────────────────────────────────────────────
 
-with st.sidebar:
-    st.markdown("### ⚙️ System Status")
-    
-    db_exists = os.path.exists("university_db_app")
-    last_update = "Unknown"
-    needs_update = False 
-    
-    if db_exists:
-        if os.path.exists("last_update.txt"):
-            with open("last_update.txt", "r", encoding="utf-8") as f:
-                last_update_str = f.read().strip()
-                last_update = last_update_str
-                try:
-                    last_date = datetime.strptime(last_update_str, "%Y-%m-%d %H:%M:%S")
-                    days_diff = (datetime.now() - last_date).days
-                    if days_diff >= 7:
-                        needs_update = True
-                except:
-                    pass
-    else:
-        needs_update = True
-
-    st.info(f"📅 **{last_update}**")
-
-    if needs_update and db_exists:
-        st.markdown("""
-        <div class="warn-box">
-        ⚠️ Old DB (7+ days).<br>Update recommended.
-        </div>
-        """, unsafe_allow_html=True)
-    elif not needs_update and db_exists:
-        st.success("✅ DB is fresh.")
-    
-    st.markdown("---")
-    st.markdown("### 🔄 Database")
-    
-    if db_exists:
-        st.metric("Status", "Ready")
-    else:
-        st.metric("Status", "Missing", delta_color="inverse")
-
-    # الزر لا يقوم بالتحديث، بل يضع "الإشارة" فقط
-    update_clicked = st.button(
-        "Update Now", 
-        use_container_width=True, 
-        disabled=not needs_update,
-        help="Click to refresh database knowledge."
-    )
-    
-    if update_clicked:
-        # وضع الإشارة لإجبار إعادة التشغيل في بداية السكريبت
-        st.session_state.trigger_update = True
-        st.rerun()
-
-    if not needs_update and db_exists:
-        st.caption("DB is fresh. Update disabled until 7 days.")
-
-    # الفوتر
-    st.markdown("---")
-    st.markdown("""
-    <div class="sidebar-footer">
-      <h4>Marah Assistant</h4>
-      <p><span class="highlight">Marah Ahmed Aljabali</span></p>
-      <p>© All Rights Reserved 2026.</p>
-    </div>
-    """, unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CHAT INTERFACE
