@@ -1,0 +1,15 @@
+streamlit
+python-dotenv # for loading environment variables
+torch # for PyTorch backend
+sentence-transformers # for sentence embeddings
+beautifulsoup4 # for web scraping
+pypdf # for PDF processing
+chromadb # for ChromaDB vector store
+langchain==0.3.0
+langchain-core==0.3.0 # core components of LangChain
+langchain-google-genai==2.0.0
+langchain-huggingface==0.1.0 # for HuggingFace integration
+langdetect # for language detection
+langchain-chroma
+requests==2.32.3
+
