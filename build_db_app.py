@@ -19,117 +19,135 @@ SITEMAP_URL = "https://www.iugaza.edu.ps/wp-sitemap.xml"
 UNIVERSITY_BASE_URL = "https://www.iugaza.edu.ps"
 EMBEDDING_MODEL = "paraphrase-multilingual-MiniLM-L12-v2"
 
-# ========= جلب كل روابط السايت ماب =========
+# ========= تنظيف النصوص (جديد) =========
+def clean_text(text):
+    """تنظيف النصوص من المسافات الزائدة والأسطر الفارغة لزيادة دقة البحث"""
+    text = text.replace('\r', '\n')
+    # إزالة الأسطر المتكررة
+    lines = text.split('\n')
+    unique_lines = []
+    prev_line = ""
+    for line in lines:
+        stripped = line.strip()
+        if stripped and stripped != prev_line:
+            unique_lines.append(stripped)
+            prev_line = stripped
+    return " ".join(unique_lines)
+
+# ========= جلب الروابط (محسّن) =========
 def get_website_urls_from_sitemap(sitemap_url):
-    """
-    دالة لجلب كل الروابط من ملف sitemap.xml الخاص بالموقع.
-    """
-    print(f"🗺️ جاري جلب خريطة الموقع من: {sitemap_url}")
+    print("🗺️ جاري جلب خريطة الموقع...")
     try:
-        response = requests.get(sitemap_url, timeout=30)
-        response.raise_for_status()
-        
+        response = requests.get(sitemap_url, timeout=15)
+        response.raise_for_status() 
         soup = BeautifulSoup(response.content, 'xml')
         urls = [loc.text for loc in soup.find_all('loc')]
-        
-        # فلترة الروابط للتأكد من أنها تابعة للموقع الرئيسي فقط
         valid_urls = [url for url in urls if url.startswith(UNIVERSITY_BASE_URL)]
         
-        # استبعاد صفحات غير مفيدة (مثل الوسوم والمؤلفين)
-        skip_keywords = ["tag", "author", "feed", "comment", "category"]
-        final_urls = [u for u in valid_urls if not any(k in u for k in skip_keywords)]
+        # فلترة روابط غير مهمة
+        skip_keywords = ["tag", "author", "feed", "category", "page"]
+        valid_urls = [u for u in valid_urls if not any(s in u for s in skip_keywords)]
         
-        print(f"✅ تم العثور على {len(final_urls)} رابط صالح.")
-        return final_urls
+        print(f"✅ تم العثور على {len(valid_urls)} رابط صالح.")
+        return valid_urls
     except Exception as e:
         print(f"❌ خطأ في جلب خريطة الموقع: {e}")
-        return []
-
-def get_hash(text):
-    return hashlib.md5(text.encode()).hexdigest()
+        # قائمة احتياطية
+        return [f"{UNIVERSITY_BASE_URL}/", f"{UNIVERSITY_BASE_URL}/aboutiug/", f"{UNIVERSITY_BASE_URL}/facalties/"]
 
 # ========= بناء قاعدة البيانات =========
 def build_database():
-    print("🚀 بدء بناء قاعدة المعرفة...")
-    
+    print("🚀 بدء بناء قاعدة المعرفة (الإصدار المطور)...")
+    start_time = datetime.datetime.now()
+
     all_documents = []
 
-    # ===== 🌐 1. تحميل الموقع الجامعي فقط =====
+    # ===== 🌐 تحميل الموقع (أخف سرعة لتجنب الحظر) =====
     urls = get_website_urls_from_sitemap(SITEMAP_URL)
+    # تقليل العدد للسرعة وعدم الزحح المفرط (يمكنك زيادة الرقم إذا أردت)
+    urls = urls[:150] 
     
     if urls:
-        print(f"📥 جاري تحميل {len(urls)} صفحة من الموقع الرسمي...")
-        # استخدام WebBaseLoader مع إعدادات لطيفة لتجنب الحظر
-        web_loader = WebBaseLoader(
-            urls,
-            continue_on_failure=True,
-            requests_per_second=1,   # إبطاء الطلبات
-            bs_kwargs={"parse_only": SoupStrainer(["main", "article", "h1", "h2", "h3", "p", "li"])} # استخراج المحتوى الرئيسي فقط
-        )
-        try:
-            web_documents = web_loader.load()
-            print(f"✅ تم تحميل {len(web_documents)} مستند من الويب.")
-            all_documents.extend(web_documents)
-        except Exception as e:
-            print(f"⚠️ حدث خطأ أثناء تحميل الويب: {e}")
+      print("📥 جاري تحميل المحتوى من الويب (قد يستغرق وقتاً)...")
+      web_loader = WebBaseLoader(
+          urls,
+          continue_on_failure=True,
+          requests_per_second=1, # إبطاء الطلبات
+          bs_kwargs={"parse_only": SoupStrainer("body")}
+      )
+      web_documents = web_loader.load()
+      # تنظيف نصوص الويب
+      for doc in web_documents:
+          doc.page_content = clean_text(doc.page_content)
+          doc.metadata["source"] = "Website"
+      
+      print(f"✅ تم تحميل {len(web_documents)} صفحة ويب.")
+      all_documents.extend(web_documents)
 
-    # ===== 📄 2. تحميل ملفات PDF المرفقة =====
+    # ===== 📄 تحميل PDF (الأولوية القصوى) =====
     if os.path.exists(DATA_PATH):
-        print("📥 جاري تحميل ملفات PDF...")
-        try:
-            pdf_loader = DirectoryLoader(DATA_PATH, loader_cls=PyPDFLoader)
-            pdf_docs = pdf_loader.load()
-            print(f"✅ تم تحميل {len(pdf_docs)} ملف PDF.")
-            all_documents.extend(pdf_docs)
-        except Exception as e:
-            print(f"⚠️ حدث خطأ أثناء تحميل الـ PDFs: {e}")
+        print("📥 تحميل ومعالجة ملفات PDF...")
+        pdf_loader = DirectoryLoader(DATA_PATH, loader_cls=PyPDFLoader)
+        pdf_docs = pdf_loader.load()
+
+        for doc in pdf_docs:
+            doc.page_content = clean_text(doc.page_content)
+            # التأكد من حفظ المصدر كاسم ملف فقط وليس المسار الكامل
+            filename = os.path.basename(doc.metadata.get('source', 'Unknown'))
+            doc.metadata["source"] = filename
+            doc.metadata["type"] = "pdf" 
+
+        print(f"✅ تم تحميل {len(pdf_docs)} صفحة من ملفات PDF.")
+        all_documents.extend(pdf_docs)
     else:
-        print("⚠️ مجلد data/pdfs غير موجود، سيتم الاعتماد على الموقع فقط.")
+        print("⚠️ مجلد data/pdfs غير موجود.")
 
     if not all_documents:
-        print("❌ لا يوجد بيانات للمعالجة!")
+        print("❌ لا توجد بيانات للمعالجة!")
         return
 
-    # ===== ✂️ 3. تقسيم النصوص =====
-    print("✂️ جاري تقسيم النصوص...")
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,  # زيادة الحجم قليلاً للحفاظ على السياق
-        chunk_overlap=200,
-        length_function=len,
+    # ===== ✂️ تقسيم (مطوّر لحجم أكبر) =====
+    print("✂️ تقسيم النصوص إلى أجزاء ذكية...")
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,      # زيادة الحجم للحصول على سياق أفضل
+        chunk_overlap=200,     # تداخل لعدم فقدان السياق
+        separators=["\n\n", "\n", ".", "،", " "]
     )
 
-    chunks = text_splitter.split_documents(all_documents)
-    print(f"✅ عدد الأجزاء النصية: {len(chunks)}")
+    chunks = splitter.split_documents(all_documents)
+    
+    # إضافة Hash للتتبع
+    for chunk in chunks:
+        chunk.metadata["hash"] = hashlib.md5(chunk.page_content.encode()).hexdigest()
 
-    # ===== 🧠 4. إنشاء التضمينات (Embeddings) =====
-    print("🧠 جاري تحميل نموذج التضمين...")
+    print(f"✅ عدد الأجزاء النهائية: {len(chunks)}")
+
+    # ===== 🧠 Embeddings =====
+    print("🧠 تحميل نموذج التضمين (HuggingFace)...")
     embeddings = HuggingFaceEmbeddings(
         model_name=EMBEDDING_MODEL,
-        model_kwargs={'device': 'cpu'} # التأكد من العمل على الـ CPU في Actions
+        encode_kwargs={'normalize_embeddings': True} # تطبيع التضمينات لدقة البحث
     )
 
-    # ===== 💾 5. بناء وحفظ قاعدة البيانات =====
+    # ===== 💾 بناء DB =====
     if os.path.exists(DB_PATH):
         print("🧹 تنظيف قاعدة البيانات القديمة...")
         shutil.rmtree(DB_PATH)
 
-    print("💾 بناء قاعدة البيانات الجديدة...")
-
-    # إضافة مصدر للبيانات للمساعدة في المرجعية
-    for chunk in chunks:
-        chunk.metadata["hash"] = get_hash(chunk.page_content)
-
+    print("💾 جاري بناء قاعدة البيانات المتجهية... (استغرق وقتاً أطول بسبب تحسين الدقة)")
+    
     Chroma.from_documents(
         documents=chunks,
         embedding=embeddings,
         persist_directory=DB_PATH
     )
 
-    # ===== 🕒 حفظ وقت التحديث =====
+    # ===== 🕒 حفظ الوقت =====
     with open("last_update.txt", "w", encoding="utf-8") as f:
         f.write(datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
 
-    print("🎉 تم بناء قاعدة البيانات بنجاح!")
+    duration = (datetime.datetime.now() - start_time).total_seconds()
+    print(f"🎉 تم بناء قاعدة البيانات بنجاح في {duration:.2f} ثانية!")
 
 if __name__ == "__main__":
     build_database()
