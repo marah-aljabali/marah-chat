@@ -173,7 +173,7 @@ def load_components():
     # البحث عن أفضل 4 نتائج
     retriever = db.as_retriever(search_kwargs={"k": 4})
     
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-flash", temperature=0, streaming=True)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0, streaming=True)
     return retriever, llm
 
 try:
