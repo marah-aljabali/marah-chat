@@ -11,7 +11,7 @@ from tavily import TavilyClient
 
 # إعداد الصفحة
 st.set_page_config(
-  page_title="Marah - University Assestent", 
+  page_title="Marah - University Assistant", 
   page_icon="🎓",
   layout="centered")
 
@@ -46,10 +46,12 @@ def load_components():
         embedding_function=embeddings
     )
 
-    retriever = db.as_retriever(search_kwargs={"k": 5})
+    # 🔧 التعديل الأول: زيادة عدد النتائج من 5 إلى 12
+    # هذا يساعد في التقاط معلومات الجداول المبعثرة في ملفات PDF
+    retriever = db.as_retriever(search_kwargs={"k": 12})
 
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash",
+        model="gemini-1.5-flash", # التأكد من استخدام المودل الصحيح والمتاح
         temperature=0
     )
 
@@ -60,7 +62,6 @@ retriever, llm = load_components()
 # ===== الذاكرة =====
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = InMemoryChatMessageHistory()
-    # 🌟 إضافة رسالة ترحيبية عند أول فتح للتطبيق فقط
     st.session_state.chat_history.add_ai_message("مرحباً بك! 👋 أنا 'مرح'، مساعدك الجامعي الذكي. \n\nيمكنني الإجابة على أسئلتك بناءً على بيانات الجامعة وموقعها الإلكتروني. كيف يمكنني مساعدتك اليوم؟")
 
 # ===== UI =====
@@ -90,14 +91,18 @@ if question:
             db_docs = retriever.invoke(contextual_query)
             db_context = format_docs(db_docs)
 
-            # 🌐 fallback
+            # 🌐 Fallback للويب (اختياري، لكن سنركز على قاعدة البيانات)
+            # ملاحظة: بما أن البيانات موجودة في الـ PDFs، لن نحتاج كثيراً للويب
+            # لكن تم ترك الكود هنا كاحتياط
             web_context = ""
             if not db_docs:
-                tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
-                result = tavily.search(query=question)
-
-                if "results" in result:
-                    web_context = "\n\n".join([r["content"] for r in result["results"]])
+                try:
+                    tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+                    result = tavily.search(query=question)
+                    if "results" in result:
+                        web_context = "\n\n".join([r["content"] for r in result["results"]])
+                except:
+                    pass
 
             final_context = f"""
             من قاعدة البيانات:
@@ -107,20 +112,18 @@ if question:
             {web_context}
             """
 
-            # 🎯 Prompt
+            # 🔧 التعديل الثاني: تحسين الـ Prompt لفهم الجداول
             prompt = ChatPromptTemplate.from_template("""
             أنت مساعد جامعي اسمه "مرح".
 
-            - أجب بنفس لغة السؤال
-            - استخدم أسلوب بسيط وواضح
-            - اعتمد على السياق لفهم السؤال
-            - قم بتزويد مصادر ومراجع للإجابة إذا تطلب الأمر
-
+            - أجب بنفس لغة السؤال).
+            - السياق أدناه مأخوذ من ملفات PDF وموقع الجامعة. قد يكون النص غير منظم (مثل الجداول المبعثرة).
+            - مهمة: ركّز بشدة على الأرقام والعلاقة بين اسم التخصص والأرقام المجاورة له.
+            - إذا كان السؤال عن "معدل القبول" أو "سعر الساعة" أو "مفتاح التنسيق"، ابحث عن الرقم المرتبط بالتخصص المذكور حتى لو كان النص مترابطاً.
+            - إذا لم تجد الإجابة في السياق الموجود أدناه، قل بوضوح: "عذراً، لم أجد هذه المعلومة في البيانات الحالية".
+            
             السياق:
             {context}
-
-            المحادثة:
-            {history}
 
             السؤال:
             {question}
@@ -138,7 +141,6 @@ if question:
 
             answer = chain.invoke({
                 "context": final_context,
-                "history": history_text,
                 "question": question
             })
 
@@ -148,4 +150,4 @@ if question:
                 st.markdown(answer)
 
         except Exception as e:
-            st.error(str(e))
+            st.error(f"حدث خطأ: {str(e)}")
