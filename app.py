@@ -7,12 +7,11 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.chat_history import InMemoryChatMessageHistory
-from tavily import TavilyClient
 
 # إعداد الصفحة
 st.set_page_config(
-  page_title="Marah - University Assistant", 
-  page_icon="🎓",
+  page_title="Marah - Smart Agentic Assistant", 
+  page_icon="🧠",
   layout="centered")
 
 # تحميل البيئة
@@ -31,9 +30,6 @@ def format_history(history):
             formatted += f"مرح: {m.content}\n"
     return formatted
 
-def get_last_messages(history, n=3):
-    return history.messages[-n*2:]
-
 # ===== تحميل الموارد =====
 @st.cache_resource
 def load_components():
@@ -46,12 +42,12 @@ def load_components():
         embedding_function=embeddings
     )
 
-    # 🔧 التعديل الأول: زيادة عدد النتائج من 5 إلى 12
-    # هذا يساعد في التقاط معلومات الجداول المبعثرة في ملفات PDF
-    retriever = db.as_retriever(search_kwargs={"k": 12})
+    # استرجاع عدد كبير للسماح للـ Agent باختيار الأفضل
+    retriever = db.as_retriever(search_kwargs={"k": 15})
 
+    # نموذج سريع وكفؤ للتفكير والبحث
     llm = ChatGoogleGenerativeAI(
-        model="gemini-2.5-flash", # التأكد من استخدام المودل الصحيح والمتاح
+        model="gemini-1.5-flash",
         temperature=0
     )
 
@@ -62,10 +58,10 @@ retriever, llm = load_components()
 # ===== الذاكرة =====
 if "chat_history" not in st.session_state:
     st.session_state.chat_history = InMemoryChatMessageHistory()
-    st.session_state.chat_history.add_ai_message("مرحباً بك! 👋 أنا 'مرح'، مساعدك الجامعي الذكي. \n\nيمكنني الإجابة على أسئلتك بناءً على بيانات الجامعة وموقعها الإلكتروني. كيف يمكنني مساعدتك اليوم؟")
+    st.session_state.chat_history.add_ai_message("مرحباً بك! 👋 أنا 'مرح'، مساعدك الجامعي الذكي.\n\nأقوم بتحليل أسئلتك بدقة لأمنحك إجابات من الملفات الرسمية فقط.")
 
 # ===== UI =====
-st.title("🎓 Marah - University Assistant")
+st.title("🧠 Marah - University Assistant (Smart RAG)")
 
 for msg in st.session_state.chat_history.messages:
     with st.chat_message(msg.type):
@@ -73,81 +69,109 @@ for msg in st.session_state.chat_history.messages:
 
 question = st.chat_input("Ask your question...")
 
-# ===== التشغيل =====
+# ===== منطق الـ Agents الذكي =====
 if question:
     st.session_state.chat_history.add_user_message(question)
-
     with st.chat_message("user"):
         st.markdown(question)
 
-    with st.spinner("مرح تفكر..."):
-        try:
-            # 🧠 Query مع سياق
-            contextual_query = f"""
-            السؤال الحالي: {question}
-            السياق: {format_history(st.session_state.chat_history)}
-            """
+    # === الخطوة 1: الـ Router Agent (من فكرة Auto-RAG) ===
+    # هذه الخطوة تحميك من الهلوسة في البيانات الشخصية
+    router_prompt = ChatPromptTemplate.from_template("""
+    أنت موجه (Router) لنظام جامعي. مهمتك فقط تصنيف السؤال.
+    
+    أجب بكلمة واحدة فقط إما "search" أو "block":
+    
+    1. قل "block" إذا كان السؤال يطلب:
+       - حالة طلب (طلب، شحنة، مرسول)
+       - راتب أو مرتب مالي
+       - معدل تراكمي خاص بالطالب
+       - كلمة السر
+       - حالة قبول شخصية
+       - أي بيانات خاصة بحساب الطالب
+       
+    2. قل "search" إذا كان السؤال عاماً أو أكاديمياً (مثل: القبول، الرسوم، المعدلات، الأنظمة، الكليات).
+    
+    السؤال: {question}
+    Classification:
+    """)
+    
+    with st.spinner("🛡️ جاري تحليل السؤال..."):
+        router_chain = router_prompt | llm | StrOutputParser()
+        decision = router_chain.invoke({"question": question}).strip().lower()
 
-            db_docs = retriever.invoke(contextual_query)
+    if decision == "block":
+        # رد آلي فوري لمنع الهلوسة
+        with st.chat_message("assistant"):
+            st.warning("🔒 **تنبيه هام:** أنا مساعد برمجي ولا أملك صلاحية الوصول لبياناتك الشخصية أو حالات طلباتك.")
+            st.markdown("للتعرف على حالتك، يرجى زيارة [بوابة الطالب](https://portal.iugaza.edu.ps) أو التواصل مع عمادة القبول والتسجيل.")
+    else:
+        # === الخطوة 2: البحث والاسترجاع ===
+        with st.spinner("🔍 جاري البحث في قاعدة المعرفة..."):
+            # أولاً: محاولة إعادة كتابة السؤال للبحث الجدولي
+            rewriter_prompt = ChatPromptTemplate.from_template("""
+            أعد كتابة السؤال أدناه لبحث دقيق في الجداول (مثل: معدل قبول، سعر ساعة).
+            أضف كلمات مفتاحية عربية.
+            السؤال: {question}
+            المحسن:
+            """)
+            rewriter_chain = rewriter_prompt | llm | StrOutputParser()
+            optimized_query = rewriter_chain.invoke({"question": question})
+
+            # البحث
+            db_docs = retriever.invoke(optimized_query)
             db_context = format_docs(db_docs)
 
-            # 🌐 Fallback للويب (اختياري، لكن سنركز على قاعدة البيانات)
-            # ملاحظة: بما أن البيانات موجودة في الـ PDFs، لن نحتاج كثيراً للويب
-            # لكن تم ترك الكود هنا كاحتياط
-            web_context = ""
-            if not db_docs:
-                try:
-                    tavily = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
-                    result = tavily.search(query=question)
-                    if "results" in result:
-                        web_context = "\n\n".join([r["content"] for r in result["results"]])
-                except:
-                    pass
+            # عرض السؤال المحسن (اختياري للشفافية)
+            with st.expander("🔄 تفكير النظام"):
+                st.write(f"**القرار:** {'مسموح بالبحث' if decision == 'search' else 'مرفوض (بيانات شخصية)'}")
+                st.write(f"**استعلام البحث:** {optimized_query}")
+                st.write(f"**النتائج المسترجعة:** {len(db_docs)} جزء نصي")
 
-            final_context = f"""
-            من قاعدة البيانات:
-            {db_context}
-
-            من الويب:
-            {web_context}
-            """
-
-            # 🔧 التعديل الثاني: تحسين الـ Prompt لفهم الجداول
-            prompt = ChatPromptTemplate.from_template("""
-            أنت مساعد جامعي اسمه "مرح".
-
-            - أجب بنفس لغة السؤال).
-            - السياق أدناه مأخوذ من ملفات PDF وموقع الجامعة. قد يكون النص غير منظم (مثل الجداول المبعثرة).
-            - مهمة: ركّز بشدة على الأرقام والعلاقة بين اسم التخصص والأرقام المجاورة له.
-            - إذا كان السؤال عن "معدل القبول" أو "سعر الساعة" أو "مفتاح التنسيق"، ابحث عن الرقم المرتبط بالتخصص المذكور حتى لو كان النص مترابطاً.
-            - إذا لم تجد الإجابة في السياق الموجود أدناه، قل بوضوح: "عذراً، لم أجد هذه المعلومة في البيانات الحالية".
+            # === الخطوة 3: Verification Agent (من فكرة Agentic RAG) ===
+            # هذا الوكيل يتحقق: هل المعلومة موجودة فعلاً في النتائج؟
+            verifier_prompt = ChatPromptTemplate.from_template("""
+            أنت مدقق دقيق. لديك سياق من ملفات جامعية وسؤال من طالب.
+            
+            مهمتك:
+            1. اقرأ السياق بدقة.
+            2. هل الإجابة المحددة (رقم، نسبة، تاريخ) موجودة في السياق؟
+            3. إذا كانت موجودة، استخرجها واكتبها.
+            4. إذا لم تكن موجودة، أو كان السياق غامضاً جداً، أكتب فقط: "معلومة غير موجودة".
+            
+            لا تخترع أرقاماً. إجابتها تعتمد 100% على السياق.
             
             السياق:
             {context}
-
+            
             السؤال:
             {question}
-
+            
             الإجابة:
             """)
+            
+            verifier_chain = verifier_prompt | llm | StrOutputParser()
+            
+            with st.spinner("🧠 التحقق من دقة المعلومة..."):
+                # إذا لم نجد نتائج، لا نحتاج للتحقق
+                if not db_docs:
+                    final_answer = "عذراً، لم أجد معلومات مطابقة لسؤالك في ملفات الجامعة."
+                else:
+                    # نجري التحقق
+                    final_answer = verifier_chain.invoke({
+                        "context": db_context,
+                        "question": question
+                    })
+                    
+                    # فحص إضافي بسيط لمنع الـ Agents من المبالغة
+                    if "غير موجودة" in final_answer or "لم أجد" in final_answer:
+                        final_answer = "عذراً، لم أجد هذه المعلومة بشكل دقيق في البيانات الحالية."
 
-            chain = prompt | llm | StrOutputParser()
-
-            history_text = format_history(
-                type("obj", (object,), {
-                    "messages": get_last_messages(st.session_state.chat_history)
-                })
-            )
-
-            answer = chain.invoke({
-                "context": final_context,
-                "question": question
-            })
-
-            st.session_state.chat_history.add_ai_message(answer)
+            st.session_state.chat_history.add_ai_message(final_answer)
 
             with st.chat_message("assistant"):
-                st.markdown(answer)
-
-        except Exception as e:
-            st.error(f"حدث خطأ: {str(e)}")
+                st.markdown(final_answer)
+                
+                # زر لطيف لتوضيح المصدر
+                if "غير موجودة" not in final_answer:
+                    st.caption("ℹ️ المصدر: الملفات الرسمية للجامعة وموقعها الإلكتروني")
