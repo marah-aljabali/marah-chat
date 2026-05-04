@@ -161,7 +161,7 @@ if question:
             # === هنا نلتقط الـ Error (ChatGoogleGenerativeAIError) ===
             except ChatGoogleGenerativeAIError as e:
                 st.error("🔴 حدث خطأ مؤقت في الاتصال بالذكاء الاصطناعي.")
-                st.markdown("**هذا قد يكون بسبب:**
+                st.markdown("**هذا قد يكون بسبب:**)
                 1. ضغط عالي على السيرفر (حاول مرة أخرى بعد ثواني).
                 2. مشكلة في النص المستخرج من الملفات.")
                 
